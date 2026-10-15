@@ -1,0 +1,77 @@
+name: FVTV Lord Roka INT-42 Verified Public Short Clips
+
+on:
+  push:
+    branches:
+      - ops/lord-roka-int42-release-20261015
+    paths:
+      - clips_source_url.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fvtv-int42-public-clip-release
+  cancel-in-progress: false
+
+jobs:
+  publish_clips:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch complete verified edited public clips (never source or guest-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s clips_source_url.txt
+          curl --fail --location --retry 2 --connect-timeout 20 --max-time 360 \
+            --silent --show-error \
+            --output /tmp/INT42_PUBLIC_CLIPS.zip "$(cat clips_source_url.txt)"
+          unzip -t /tmp/INT42_PUBLIC_CLIPS.zip | tail -n 3
+          mkdir -p /tmp/clips
+          unzip -j -o /tmp/INT42_PUBLIC_CLIPS.zip '*.mp4' -d /tmp/clips
+          test "$(find /tmp/clips -maxdepth 1 -name '*.mp4' | wc -l)" -eq 8
+
+      - name: Recheck codec, dimensions and legal social clip duration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+          python3 - <<'PY'
+          import glob,json,subprocess
+          paths=glob.glob('/tmp/clips/*.mp4')
+          assert len(paths)==8,len(paths)
+          for f in paths:
+              o=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration:stream=codec_name,codec_type,width,height','-of','json',f]))
+              length=float(o['format']['duration'])
+              assert 40<=length<=180,(f,length)
+              assert any(s.get('codec_name')=='h264' and s.get('width')==1080 and s.get('height')==1080 for s in o['streams']),f
+              assert any(s.get('codec_name')=='aac' for s in o['streams']),f
+              print(f,round(length,1))
+          PY
+
+      - name: Release eight distinct validated public clips
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="lord-roka-2026-10-14-int42"
+          REPO="fvtvmedia/fvtv-public-video-delivery"
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$REPO" \
+              --title "FVTV Lord Roka x Shordy | Original Interview | October 14, 2026" \
+              --notes "Official FVTV Media public interview clips. The edited public full-length 2-ad version and the 10-minute 1-ad version will be attached separately once verified. Private guest-only footage is not hosted here."
+          fi
+          for f in /tmp/clips/*.mp4; do
+            if gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' \
+              | grep -Fqx "$(basename "$f")"; then
+              echo "Existing clip preserved: $(basename "$f")"
+            else
+              gh release upload "$TAG" "$f" --repo "$REPO"
+              echo "Published $(basename "$f")"
+            fi
+          done
+          gh release view "$TAG" --repo "$REPO" --json assets,url
