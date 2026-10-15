@@ -1,0 +1,90 @@
+name: FVTV Lord Roka INT-42 Verified Public Longform Release
+
+on:
+  push:
+    branches:
+      - ops/lord-roka-int42-release-20261015
+    paths:
+      - release_source_url.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fvtv-int42-public-release
+  cancel-in-progress: false
+
+jobs:
+  publish_public_edited_videos:
+    name: Validate and publish only completed edited public interview versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified processed public archive from private production handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release_source_url.txt
+          curl --fail --location --retry 3 --retry-delay 2 --connect-timeout 20 \
+            --max-time 540 --silent --show-error \
+            --output /tmp/INT42_PUBLIC_READY.zip "$(cat release_source_url.txt)"
+          test "$(stat -c %s /tmp/INT42_PUBLIC_READY.zip)" -gt 50000000
+          unzip -t /tmp/INT42_PUBLIC_READY.zip | tail -n 3
+          mkdir -p /tmp/int42
+          unzip -j -o /tmp/INT42_PUBLIC_READY.zip '*.mp4' -d /tmp/int42
+          ls -lh /tmp/int42/
+
+      - name: Verify codecs, 10-minute and full runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+          cd /tmp/int42
+          test -f Lord_Roka_Full_Public_2ActualAds_720p.mp4
+          test -f Lord_Roka_Central_Avenue_10Min_1ActualAd_720p.mp4
+          for f in *.mp4; do
+            ffprobe -v error -show_entries format=duration,size:stream=codec_name,codec_type,width,height \
+              -of json "$f"
+            ffmpeg -v error -xerror -i "$f" -map 0:v:0 -map 0:a:0 -f null -
+            sha256sum "$f"
+          done
+          python3 - <<'PY'
+          import json,subprocess
+          names={'Lord_Roka_Full_Public_2ActualAds_720p.mp4':(2110,2132),'Lord_Roka_Central_Avenue_10Min_1ActualAd_720p.mp4':(605,640)}
+          for name,(lo,hi) in names.items():
+              data=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration:stream=codec_name,codec_type,width,height','-of','json',name]))
+              secs=float(data['format']['duration'])
+              assert lo<=secs<=hi,(name,secs)
+              assert any(s['codec_name']=='h264' and s.get('width')==1280 for s in data['streams'])
+              assert any(s['codec_name']=='aac' for s in data['streams'])
+          print('LONG-FORM MEDIA VALIDATED')
+          PY
+
+      - name: Upload verified MP4 files into existing FVTV public video delivery repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="lord-roka-2026-10-14-int42"
+          REPO="fvtvmedia/fvtv-public-video-delivery"
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$REPO" \
+              --title "FVTV Lord Roka Interview | Shordy | Oct 14, 2026" \
+              --notes "Official FVTV Media edited public interview. The full version embeds actual FVTV Studios and Gold Vision Films spots; the 10-minute section embeds the approved FVTV Studios spot. Guest-only editions are excluded."
+          fi
+          for f in /tmp/int42/*.mp4; do
+            base="$(basename "$f")"
+            if gh release view "$TAG" --repo "$REPO" --json assets \
+              --jq '.assets[].name' | grep -Fqx "$base"; then
+              echo "Release asset already exists; preserving and skipping duplicate: $base"
+            else
+              gh release upload "$TAG" "$f" --repo "$REPO"
+              echo "Published $base"
+            fi
+          done
+          gh release view "$TAG" --repo "$REPO" --json url,assets
