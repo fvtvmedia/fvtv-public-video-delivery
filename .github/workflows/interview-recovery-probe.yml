@@ -1,0 +1,58 @@
+name: FVTV held interview source recovery check
+on:
+  push:
+    branches: [ops/interview-recovery-20261016]
+    paths: [.github/workflows/interview-recovery-probe.yml]
+permissions:
+  contents: read
+concurrency:
+  group: fvtv-held-interview-source-recovery
+  cancel-in-progress: false
+jobs:
+  source_check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - name: keyze
+            url: https://static.metricool.com/planner/202610/6530801-file-8557372624939593583.mp4
+          - name: austin-je
+            url: https://static.metricool.com/planner/202610/6530801-file-9184422677335893081.mp4
+          - name: just-emcee
+            url: https://static.metricool.com/planner/202610/6530801-file-8408097115037214888.mp4
+    steps:
+      - name: Retrieve existing held public-version source
+        env:
+          SOURCE_URL: ${{ matrix.url }}
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          curl --fail --location --connect-timeout 20 --max-time 300 --silent --show-error --output source.mp4 "$SOURCE_URL"
+          test "$(stat -c %s source.mp4)" -gt 1000000
+          sha256sum source.mp4 | tee qa/source.sha256
+      - name: Install media inspection tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+      - name: Inspect streams, decode the whole source, and recover review material
+        run: |
+          set -euo pipefail
+          ffprobe -v error -show_format -show_streams -of json source.mp4 > qa/probe.json
+          cat qa/probe.json
+          ffmpeg -nostdin -hide_banner -v error -xerror -i source.mp4 -map 0:v:0 -map 0:a:0 -f null - 2> qa/decode.log
+          echo "Full source decode passed" | tee qa/decode-status.txt
+          ffmpeg -nostdin -hide_banner -v warning -i source.mp4 -vf "fps=1/90,scale=480:-2" -fps_mode vfr -q:v 3 qa/frame_%03d.jpg
+          ffmpeg -nostdin -hide_banner -v warning -i source.mp4 -vn -ac 1 -ar 16000 -c:a libopus -b:a 32k qa/review_audio.ogg
+          ffmpeg -nostdin -hide_banner -i source.mp4 -vn -af "volumedetect,silencedetect=noise=-45dB:d=3" -f null - 2> qa/audio-audit.log
+      - name: Keep bounded inspection evidence for one day
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interview-source-${{ matrix.name }}
+          path: qa/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
