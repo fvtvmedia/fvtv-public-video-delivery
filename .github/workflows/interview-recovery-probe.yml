@@ -11,48 +11,64 @@ concurrency:
 jobs:
   source_check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
         include:
           - name: keyze
-            url: https://static.metricool.com/planner/202610/6530801-file-8557372624939593583.mp4
+            source_id: 1mXUEIF-ceKCRgRIMdMRGfbemOa68hezN
+            expected_size: 780243293
           - name: austin-je
-            url: https://static.metricool.com/planner/202610/6530801-file-9184422677335893081.mp4
+            source_id: 17w2CbdgbYzuFe8PDix3YiVrpuxGg_jpH
+            expected_size: 1840772394
           - name: just-emcee
-            url: https://static.metricool.com/planner/202610/6530801-file-8408097115037214888.mp4
+            source_id: 1z843OIlgokyeP6TKoqBWkXpTHc2xLU6E
+            expected_size: 924842933
     steps:
-      - name: Retrieve existing held public-version source
-        env:
-          SOURCE_URL: ${{ matrix.url }}
+      - name: Install source recovery and inspection tools
         run: |
           set -euo pipefail
           mkdir -p qa
-          curl --fail --location --connect-timeout 20 --max-time 300 --silent --show-error --output source.mp4 "$SOURCE_URL"
-          test "$(stat -c %s source.mp4)" -gt 1000000
-          sha256sum source.mp4 | tee qa/source.sha256
-      - name: Install media inspection tools
-        run: |
+          python3 -m pip install --quiet gdown
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
-      - name: Inspect streams, decode the whole source, and recover review material
+      - name: Retrieve original already-link-accessible source without changing permissions
+        env:
+          SOURCE_ID: ${{ matrix.source_id }}
+          EXPECTED_SIZE: ${{ matrix.expected_size }}
+        run: |
+          set -euo pipefail
+          timeout 600 gdown "$SOURCE_ID" --no-cookies -O source.mp4
+          actual=$(stat -c %s source.mp4)
+          printf 'Expected bytes: %s\nReceived bytes: %s\n' "$EXPECTED_SIZE" "$actual" | tee qa/download-size.txt
+          test "$actual" -eq "$EXPECTED_SIZE"
+          sha256sum source.mp4 | tee qa/source.sha256
+      - name: Inspect complete source and recover review material
         run: |
           set -euo pipefail
           ffprobe -v error -show_format -show_streams -of json source.mp4 > qa/probe.json
           cat qa/probe.json
           ffmpeg -nostdin -hide_banner -v error -xerror -i source.mp4 -map 0:v:0 -map 0:a:0 -f null - 2> qa/decode.log
-          echo "Full source decode passed" | tee qa/decode-status.txt
-          ffmpeg -nostdin -hide_banner -v warning -i source.mp4 -vf "fps=1/90,scale=480:-2" -fps_mode vfr -q:v 3 qa/frame_%03d.jpg
+          echo 'Full source decode passed' | tee qa/decode-status.txt
+          ffmpeg -nostdin -hide_banner -v warning -i source.mp4 -vf 'fps=1/90,scale=480:-2' -fps_mode vfr -q:v 3 qa/frame_%03d.jpg
           ffmpeg -nostdin -hide_banner -v warning -i source.mp4 -vn -ac 1 -ar 16000 -c:a libopus -b:a 32k qa/review_audio.ogg
-          ffmpeg -nostdin -hide_banner -i source.mp4 -vn -af "volumedetect,silencedetect=noise=-45dB:d=3" -f null - 2> qa/audio-audit.log
+          ffmpeg -nostdin -hide_banner -i source.mp4 -vn -af 'volumedetect,silencedetect=noise=-45dB:d=3' -f null - 2> qa/audio-audit.log
+      - name: Validate both exact approved house-ad files
+        if: matrix.name == 'keyze'
+        run: |
+          set -euo pipefail
+          gdown 1V_e4cjXccaNJaVdRCUxq8zMIA4H2Ipwa --no-cookies -O qa/gvf.mp4
+          gdown 1JfYVQrDxO_aMb6uqQfYI7MOl8mEqllt- --no-cookies -O qa/studios.mp4
+          echo 'fbe37717a69bab85afb24e818e93cb07d70467afc3100ba108a07747f1a44d3d  qa/gvf.mp4' | sha256sum -c -
+          echo '52b3d1b6a2eab7e2701f93dddd85c51b5af7d8cee326299d95fb2f1d160837f1  qa/studios.mp4' | sha256sum -c -
       - name: Keep bounded inspection evidence for one day
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: interview-source-${{ matrix.name }}
+          name: interview-original-${{ matrix.name }}
           path: qa/
           retention-days: 1
           compression-level: 0
-          if-no-files-found: error
+          if-no-files-found: warn
