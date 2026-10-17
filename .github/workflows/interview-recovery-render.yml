@@ -1,0 +1,68 @@
+name: FVTV recovered interview public editions
+on:
+  push:
+    branches: [ops/interview-recovery-20261016]
+    paths: [.github/workflows/interview-recovery-render.yml]
+permissions:
+  contents: read
+concurrency:
+  group: fvtv-recovered-interview-render
+  cancel-in-progress: false
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        interview: [keyze, just-emcee, austin-je]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install standard media tools
+        run: |
+          python3 -m pip install --quiet gdown
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
+      - name: Verify edit accounting before production
+        run: |
+          python3 - <<'PY'
+          from recovery.assembly import timeline, CONFIG
+          for name,cfg in CONFIG.items():
+              full=timeline(cfg['full']); feature=timeline(cfg['feature'])
+              assert len(full['ads']) == 2
+              assert len(feature['ads']) == 1
+              assert {x['asset'] for x in full['ads']} == {'gvf','studios'}
+              assert 480 <= feature['duration'] <= 720
+          assert abs(timeline(CONFIG['keyze']['full'])['duration'] - 1858.65) < .001
+          print('Edit accounting passed')
+          PY
+      - name: Render source-specific public versions and verify full decode
+        run: python3 recovery/assembly.py '${{ matrix.interview }}'
+      - name: Save inspection evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-edit-qa-${{ matrix.interview }}
+          path: |
+            qa/
+            work/*.log
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: warn
+      - name: Save verified full episode
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-full-${{ matrix.interview }}
+          path: outputs/*full*.mp4
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Save verified one-ad feature
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-feature-${{ matrix.interview }}
+          path: outputs/*feature*.mp4
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
