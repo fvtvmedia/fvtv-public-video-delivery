@@ -1,0 +1,34 @@
+name: Preserve verified Just Emcee public editions
+on:
+  push:
+    branches: [ops/interview-recovery-20261016]
+    paths: [.github/workflows/emcee-public-edit-delivery.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  preserve_verified_exports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: fvtvmedia/fvtv-public-video-delivery
+    steps:
+      - name: Retrieve only completed public derivatives
+        run: |
+          set -euo pipefail
+          mkdir -p ready
+          gh run download 38985841484 -n public-full-just-emcee -D ready
+          gh run download 38985841484 -n public-feature-just-emcee -D ready
+          echo '90fa604d8a62f17ac214dbb5c24388c55f4591e2c32b86627dc111afbbc399dc  ready/just-emcee_full_2ads_720p.mp4' | sha256sum -c -
+          echo 'a06da9cd5340a69857d2fdc91f5503b62aa5a006fce030b63176102a927f3eaa  ready/just-emcee_feature_1ads_720p.mp4' | sha256sum -c -
+      - name: Preserve exact reviewed files
+        run: |
+          set -euo pipefail
+          tag=just-emcee-public-ads-20261016
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo 'Existing release found; refusing to duplicate or replace it.'
+            exit 1
+          fi
+          gh release create "$tag" ready/*.mp4 --target ops/interview-recovery-20261016 --title 'Just Emcee - Public Interview Ad Editions' --notes 'Verified public derivatives: 39:48 full interview with two distinct approved house commercials; 10:51.8 feature with one approved commercial. 1280x720 H.264/AAC, complete decode passed, actual ad frames and joins visually checked, measured integrated loudness approximately -16 LUFS. Original and private guest files unchanged. The HD full master is 522926319 bytes; retain this master when making any smaller upload derivative. This transport release does not indicate YouTube or Facebook publication.'
+          gh release view "$tag" --json url,assets
