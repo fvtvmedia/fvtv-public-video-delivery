@@ -1,0 +1,34 @@
+name: Preserve verified Keyze public editions
+on:
+  push:
+    branches: [ops/interview-recovery-20261016]
+    paths: [.github/workflows/keyze-public-edit-delivery.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  preserve_verified_exports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: fvtvmedia/fvtv-public-video-delivery
+    steps:
+      - name: Retrieve only the two completed public derivatives
+        run: |
+          set -euo pipefail
+          mkdir -p ready
+          gh run download 38985841484 -n public-full-keyze -D ready
+          gh run download 38985841484 -n public-feature-keyze -D ready
+          echo '1a8026575ca2fe68ea399c284530f5bc2e68897e3cd9efd83aa63c218817a77a  ready/keyze_full_2ads_720p.mp4' | sha256sum -c -
+          echo '7795c01b7cc8caea1bc506c89d9cb67829f7e27a65d81f837d94518aa22962f4  ready/keyze_feature_1ads_720p.mp4' | sha256sum -c -
+      - name: Preserve immutable verified output files
+        run: |
+          set -euo pipefail
+          tag=keyze-arizona-public-ads-20261016
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo 'Existing release found; refusing to duplicate or replace it.'
+            exit 1
+          fi
+          gh release create "$tag" ready/*.mp4 --target ops/interview-recovery-20261016 --title 'Keyze AriZona - Public Interview Ad Editions' --notes 'Verified public derivatives: 30:58.667 full interview with two distinct approved house commercials; 10:04.833 feature with one approved commercial. Both 1280x720 H.264/AAC, full decode passed, ad frames inspected, measured loudness approximately -16 LUFS. Original and private guest files remain unchanged. This media transport release is not a YouTube or Facebook publication receipt.'
+          gh release view "$tag" --json url,assets
