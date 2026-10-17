@@ -6,11 +6,11 @@ ASSETS = {
  'studios': ('1JfYVQrDxO_aMb6uqQfYI7MOl8mEqllt-',1337452,'52b3d1b6a2eab7e2701f93dddd85c51b5af7d8cee326299d95fb2f1d160837f1'),
  'logo': ('1s09LnxmhH5utRcp-LZcSdW7dsUS7QzXw',264878,'b7d40e0c672f9bae8a7e3023698f8c2a192999f76a44b115258fa1b80da41d72')}
 CONFIG = {
- 'keyze': {'source': ('1mXUEIF-ceKCRgRIMdMRGfbemOa68hezN',780243293,'06822cfa34dde647e4c9359077f4c204568048fb50aeae77e9f063260c1b279746'),
+ 'keyze': {'source': ('1mXUEIF-ceKCRgRIMdMRGfbemOa68hezN',780243293,'135337a19fec3473bd56bfecd03e9f065adaf159e76bda2620e987a0d40124bd'),
  'full': [('source',12.5,118.1),('source',270.6,727),('gvf',0,12),('source',727,1299.4),('studios',0,25),('source',1299.4,1986.65)],
  'feature': [('source',370.7,727),('gvf',0,12),('source',727,963.52)], 'title': 'Keyze AriZona',
  'note': 'Known reconnection interval 118.1-270.6 seconds excluded; original retained. Feature: Christmas in Spring, filmmaking and creative partnerships.'},
- 'just-emcee': {'source': ('1z843OIlgokyeP6TKoqBWkXpTHc2xLU6E',924842933,'510326981b2c4656c9298b3e45c87d55e4d5ee3b1c51479372e8c32043847b993f'),
+ 'just-emcee': {'source': ('1z843OIlgokyeP6TKoqBWkXpTHc2xLU6E',924842933,'6e0e7e8140fdef2fe1a2d8abfa4cf9d95b9687384875ba68280518f5a6fc45ae'),
  'full': [('source',4.7,680.5),('gvf',0,12),('source',680.5,1427),('studios',0,25),('source',1427,2355.7)],
  'feature': [('source',680.7,1038),('studios',0,25),('source',1038,1307.5)], 'title': 'Just Emcee',
  'note': 'Original recording and private clean delivery retained. Feature: consistency, catalog growth, criticism and client collaboration.'},
@@ -47,7 +47,12 @@ def digest(path):
 def download(meta,path):
     ident,size,sha=meta
     run(['gdown',ident,'--no-cookies','-O',str(path)])
-    if path.stat().st_size!=size or digest(path)!=sha: raise ValueError(f'Source size/hash mismatch: {path}')
+    actual_size, actual_sha = path.stat().st_size, digest(path)
+    evidence={'file':str(path),'expected_bytes':size,'actual_bytes':actual_size,'expected_sha256':sha,'actual_sha256':actual_sha}
+    Path('qa').mkdir(exist_ok=True)
+    (Path('qa')/(path.stem+'-download.json')).write_text(json.dumps(evidence,indent=2))
+    print(json.dumps(evidence),flush=True)
+    if actual_size!=size or actual_sha!=sha: raise ValueError(f'Source size/hash mismatch: {path}')
 
 def loudness(path,log):
     p=subprocess.run(['ffmpeg','-nostdin','-hide_banner','-i',str(path),'-vn','-af','highpass=f=65,loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json','-f','null','-'],capture_output=True,text=True,check=True)
