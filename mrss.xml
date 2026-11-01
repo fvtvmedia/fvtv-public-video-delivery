@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>FVTV Media Original Interview Videos</title>
+    <link>https://fvtvmedia.com</link>
+    <description>Original FVTV Media artist interviews and interview excerpts.</description>
+    <language>en-us</language>
+    <atom:link href="https://raw.githubusercontent.com/fvtvmedia/fvtv-public-video-delivery/main/mrss.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>TBKAYZ on Nigerian Musical Influences | FVTV Media Interview</title>
+      <link>https://github.com/fvtvmedia/fvtv-public-video-delivery/releases/tag/tbkayz-2026-10-21-int87</link>
+      <guid isPermaLink="false">fvtvmedia:tbkayz:g03:nigerian-musical-influences:2026-10-31</guid>
+      <pubDate>Sun, 01 Nov 2026 00:44:49 GMT</pubDate>
+      <description>TBKAYZ talks with Shordy about the Nigerian musical influences behind his sound in this excerpt from their FVTV Media interview.</description>
+      <dc:creator>FVTV Media</dc:creator>
+      <category>Music</category>
+      <enclosure url="https://github.com/fvtvmedia/fvtv-public-video-delivery/releases/download/tbkayz-2026-10-21-int87/G03_Nigerian_Musical_Influences_FVTV_1x1.mp4" length="15077563" type="video/mp4"/>
+      <media:group>
+        <media:title type="plain">TBKAYZ on Nigerian Musical Influences | FVTV Media Interview</media:title>
+        <media:description type="plain">TBKAYZ talks with Shordy about the Nigerian musical influences behind his sound in this excerpt from their FVTV Media interview.</media:description>
+        <media:credit role="publisher">FVTV Media</media:credit>
+        <media:content url="https://github.com/fvtvmedia/fvtv-public-video-delivery/releases/download/tbkayz-2026-10-21-int87/G03_Nigerian_Musical_Influences_FVTV_1x1.mp4" medium="video" type="video/mp4" fileSize="15077563" duration="70" width="1080" height="1080" isDefault="true"/>
+        <media:thumbnail url="https://github.com/fvtvmedia/fvtv-public-video-delivery/releases/download/tbkayz-2026-10-21-int87/G03_Nigerian_Musical_Influences_FVTV_thumbnail.jpg" width="1080" height="1080"/>
+      </media:group>
+    </item>
+  </channel>
+</rss>
