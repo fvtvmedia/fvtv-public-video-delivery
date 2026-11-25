@@ -13,6 +13,7 @@ jobs:
       - name: Render, audio-verify and upload five archived video repairs
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: fvtvmedia/fvtv-public-video-delivery
         shell: bash
         run: |
           set -euo pipefail
