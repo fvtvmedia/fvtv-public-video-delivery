@@ -1,0 +1,53 @@
+name: FVTV Archive Square Media Repairs 2026-11-25
+on:
+  push:
+    branches:
+      - fvtv-archive-square-20261125
+permissions:
+  contents: write
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Render, audio-verify and upload five archived video repairs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -version | head -n 1
+          mkdir -p out
+          vf='[0:v]split=3[ta][ma][ca];[ta]crop=1080:218:0:100,setsar=1[top];[ma]crop=1080:630:0:306,setsar=1[mid];[ca]crop=1080:232:0:1320,setsar=1[sub];[top][mid][sub]vstack=inputs=3,format=yuv420p[v]'
+          printf 'FVTV 2026-11-25 video production: original 2026 archive clips reflowed into 1:1 without retiming dialogue.\n' > out/QA_README.txt
+          render() {
+            url="$1"
+            base="$2"
+            uuid="$3"
+            echo "RENDER: $base original UUID $uuid"
+            ffmpeg -nostdin -hide_banner -loglevel error -i "$url" -filter_complex "$vf" -map '[v]' -map 0:a:0 -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart -y "out/$base.mp4"
+            dims="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "out/$base.mp4")"
+            test "$dims" = '1080,1080'
+            dur="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "out/$base.mp4")"
+            awk -v d="$dur" 'BEGIN { if (d<79.9 || d>80.3) exit 1 }'
+            ffmpeg -nostdin -v error -i "out/$base.mp4" -f null - 2> "out/$base.decode.log"
+            test ! -s "out/$base.decode.log"
+            src_audio="$(ffmpeg -nostdin -v error -i "$url" -map 0:a:0 -c:a copy -f hash -hash sha256 - | tail -n 1)"
+            dst_audio="$(ffmpeg -nostdin -v error -i "out/$base.mp4" -map 0:a:0 -c:a copy -f hash -hash sha256 - | tail -n 1)"
+            test "$src_audio" = "$dst_audio"
+            ffmpeg -nostdin -v error -ss 35 -i "out/$base.mp4" -frames:v 1 -q:v 2 -y "out/$base.jpg"
+            sha256sum "out/$base.mp4" >> out/QA_README.txt
+            echo "$base|uuid=$uuid|size=$(stat -c %s "out/$base.mp4")|duration=$dur|dimensions=$dims|audio_same=YES|full_decode=PASS" >> out/QA_README.txt
+          }
+          render 'https://static.metricool.com/planner/202608/6530801-file-10903163861368645473.mp4' 'FVTV_Archive_Hunting_Seattle_20261126_SQUARE' '2649732083006785095'
+          render 'https://static.metricool.com/planner/202608/6530801-file-8412565013812530129.mp4' 'FVTV_Archive_Find_Singer_20261127_SQUARE' '-3892270506968004667'
+          render 'https://static.metricool.com/planner/202608/6530801-file-17945110761947682069.mp4' 'FVTV_Archive_Rate_Your_Song_20261128_SQUARE' '3054224391240305778'
+          render 'https://static.metricool.com/planner/202608/6530801-file-17142100606587024716.mp4' 'FVTV_Archive_Bad_Feature_20261129_SQUARE' '-4837761111857346344'
+          render 'https://static.metricool.com/planner/202608/6530801-file-6284573780905534294.mp4' 'FVTV_Archive_Music_Video_Rating_20261130_SQUARE' '-4874978239774047054'
+          tag='fvtv-archive-square-20261125-cam-5'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" out/*.mp4 out/*.jpg out/QA_README.txt --clobber
+          else
+            gh release create "$tag" out/*.mp4 out/*.jpg out/QA_README.txt --target "$GITHUB_SHA" --title 'FVTV Archive Square Video Corrections Nov 26-30 2026' --notes 'Five original archival interview clips, preserving source dialogue and caption text in newly recomposed 1080x1080 videos. Publisher replacements must reuse original Metricool UUIDs and schedule dates.'
+          fi
+          gh release view "$tag" --json url,assets --jq '{url:.url,files:[.assets[].name]}'
