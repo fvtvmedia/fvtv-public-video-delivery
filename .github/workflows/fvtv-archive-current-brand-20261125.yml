@@ -1,0 +1,64 @@
+name: FVTV Archive Current-Brand Video Repairs
+on:
+  push:
+    branches:
+      - fvtv-archive-rebrand-20261125
+permissions:
+  contents: write
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            production/archive-square-rebrand-20261125
+          sparse-checkout-cone-mode: false
+      - name: Produce and verify five authentic current-brand video masters
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: fvtvmedia/fvtv-public-video-delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          mkdir -p out
+          overlays='production/archive-square-rebrand-20261125'
+          badge="$overlays/CurrentOfficialLogo_Badge174x109.png"
+          vf='[0:v][1:v]overlay=0:0:shortest=1[head];[head][2:v]overlay=884:275:shortest=1,format=yuv420p[v]'
+          printf 'FVTV current brand (2026-11-25): genuine red-neon logo replaces retired Family Views TV imprint; gold #D4B03F remains current. All spoken audio copied unchanged. Existing publisher drafts/private settings are independent and preserved by subsequent native in-place replacement.\n' > out/QA_README.txt
+          render() {
+            source="$1"
+            id="$2"
+            uuid="$3"
+            title="$overlays/${id}_TopHeadline.png"
+            target="out/FVTV_Archive_${id}_CURRENT_BRAND_SQUARE_20261125.mp4"
+            echo "RENDER: $id original Metricool UUID $uuid"
+            ffmpeg -nostdin -hide_banner -loglevel error -i "$source" -loop 1 -i "$title" -loop 1 -i "$badge" -filter_complex "$vf" -map '[v]' -map 0:a:0 -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart -y "$target"
+            dims="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$target")"
+            test "$dims" = '1080,1080'
+            dur="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$target")"
+            awk -v d="$dur" 'BEGIN { if (d<79.9 || d>80.3) exit 1 }'
+            ffmpeg -nostdin -v error -i "$target" -f null - 2> "out/${id}.decode.log"
+            test ! -s "out/${id}.decode.log"
+            src_audio="$(ffmpeg -nostdin -v error -i "$source" -map 0:a:0 -c:a copy -f hash -hash sha256 - | tail -n 1)"
+            dst_audio="$(ffmpeg -nostdin -v error -i "$target" -map 0:a:0 -c:a copy -f hash -hash sha256 - | tail -n 1)"
+            test "$src_audio" = "$dst_audio"
+            ffmpeg -nostdin -v error -ss 35 -i "$target" -frames:v 1 -q:v 2 -y "out/${id}_CURRENT_BRAND_FRAME35.jpg"
+            sha256sum "$target" >> out/QA_README.txt
+            echo "id=$id|uuid=$uuid|duration=$dur|dimensions=$dims|audio_same=YES|full_decode=PASS" >> out/QA_README.txt
+          }
+          render 'https://static.metricool.com/planner/202611/6530801-file-3215614763571032502.mp4' 'Hunting' '2649732083006785095'
+          render 'https://static.metricool.com/planner/202611/6530801-file-15720876932305153711.mp4' 'Singer' '-3892270506968004667'
+          render 'https://static.metricool.com/planner/202611/6530801-file-9110485784623964254.mp4' 'RateSong' '3054224391240305778'
+          render 'https://static.metricool.com/planner/202611/6530801-file-17165359425281220803.mp4' 'BadFeature' '-4837761111857346344'
+          render 'https://static.metricool.com/planner/202611/6530801-file-3370851889496525796.mp4' 'MusicVideo' '-4874978239774047054'
+          tag='fvtv-archive-square-current-brand-20261125-v2'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" out/*.mp4 out/*.jpg out/QA_README.txt --clobber
+          else
+            gh release create "$tag" out/*.mp4 out/*.jpg out/QA_README.txt --target "$GITHUB_SHA" --title 'FVTV Current-Brand Square Archive Interview Repairs' --notes 'Five 1080x1080 archive originals, replacing retired Family Views TV visual mark with actual approved FVTV Media red-neon logo, restoring clean gold headlines and preserving original source audio. Source-caption transcript proof remains independent.'
+          fi
+          gh release view "$tag" --json url,assets --jq '{url:.url,files:[.assets[].name]}'
